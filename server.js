@@ -1,9 +1,9 @@
 const express=require('express'),http=require('http'),crypto=require('crypto'),fs=require('fs'),{Server}=require('socket.io'),path=require('path');
 const app=express(),server=http.createServer(app),io=new Server(server);const PORT=process.env.PORT||3000;app.use(express.static(path.join(__dirname,'..','public')));
-const accounts=new Map(),sessions=new Map(),clubs=new Map();let clubCounter=1;
+const accounts=new Map(),sessions=new Map(),clubs=new Map(),friendRequests=new Map(),friends=new Map(),dms=new Map();let clubCounter=1;
 const DATA_FILE=path.join(__dirname,'data.json');
-function saveData(){try{const data={clubCounter,accounts:[...accounts.values()],clubs:[...clubs.values()].map(c=>({...c,members:[...c.members]}))};fs.writeFileSync(DATA_FILE,JSON.stringify(data));}catch(e){console.error('saveData',e.message)}}
-function loadData(){try{if(!fs.existsSync(DATA_FILE))return;const d=JSON.parse(fs.readFileSync(DATA_FILE,'utf8'));clubCounter=d.clubCounter||1;(d.accounts||[]).forEach(a=>accounts.set(a.handle.toLowerCase(),{...a,online:false}));(d.clubs||[]).forEach(c=>clubs.set(c.id,{...c,members:new Set(c.members||[])}));}catch(e){console.error('loadData',e.message)}}
+function saveData(){try{const data={clubCounter,accounts:[...accounts.values()],clubs:[...clubs.values()].map(c=>({...c,members:[...c.members]})),friends:[...friends.entries()].map(([k,v])=>[k,[...v]]),friendRequests:[...friendRequests.entries()].map(([k,v])=>[k,[...v]]),dms:[...dms.entries()]};fs.writeFileSync(DATA_FILE,JSON.stringify(data));}catch(e){console.error('saveData',e.message)}}
+function loadData(){try{if(!fs.existsSync(DATA_FILE))return;const d=JSON.parse(fs.readFileSync(DATA_FILE,'utf8'));clubCounter=d.clubCounter||1;(d.accounts||[]).forEach(a=>accounts.set(a.handle.toLowerCase(),{...a,online:false}));(d.clubs||[]).forEach(c=>clubs.set(c.id,{...c,members:new Set(c.members||[])}));(d.friends||[]).forEach(([k,v])=>friends.set(k,new Set(v||[])));(d.friendRequests||[]).forEach(([k,v])=>friendRequests.set(k,new Set(v||[])));(d.dms||[]).forEach(([k,v])=>dms.set(k,v||[]));}catch(e){console.error('loadData',e.message)}}
 loadData();
 const BASE=[{id:'general',name:'общий',type:'text'},{id:'media',name:'медиа',type:'text'},{id:'lobby',name:'Лобби',type:'voice'},{id:'hangout',name:'Тусовка',type:'voice'}];
 const RE=/^[A-Za-z0-9_]{3,20}$/;
@@ -19,10 +19,29 @@ function emitClubs(k){const sid=[...sessions].find(([,h])=>h===k)?.[0];if(sid)io
 function roomUsers(room){return[...(io.sockets.adapter.rooms.get(room)||[])].map(id=>pub(sessions.get(id))).filter(Boolean)}
 function joinClubSocket(s,c){s.join(c.id);s.emit('club:join',view(c,sessions.get(s.id)));io.to(c.id).emit('club:participants',roomUsers(c.id))}
 
+app.get('/api/gifs',async(req,res)=>{
+  const key=process.env.TENOR_API_KEY;
+  if(!key)return res.status(503).json({error:'Tenor is not configured. Add TENOR_API_KEY in Render Environment.'});
+  const q=String(req.query.q||'funny').slice(0,80);
+  const limit=Math.min(Math.max(Number(req.query.limit)||12,1),24);
+  try{const u=new URL('https://tenor.googleapis.com/v2/search');u.searchParams.set('q',q);u.searchParams.set('key',key);u.searchParams.set('client_key',process.env.TENOR_CLIENT_KEY||'wecsord');u.searchParams.set('limit',String(limit));u.searchParams.set('media_filter','gif,tinygif,nanogif');const r=await fetch(u);const d=await r.json();if(!r.ok)return res.status(r.status).json({error:d?.error?.message||'Tenor request failed'});res.json({results:(d.results||[]).map(x=>({id:x.id,title:x.content_description||'',url:x.media_formats?.gif?.url||x.media_formats?.tinygif?.url||'',preview:x.media_formats?.tinygif?.url||x.media_formats?.gif?.url||''})).filter(x=>x.url)});}catch(e){res.status(500).json({error:'Tenor request failed'})}
+});
+
+function fset(k){if(!friends.has(k))friends.set(k,new Set());return friends.get(k)}
+function reqset(k){if(!friendRequests.has(k))friendRequests.set(k,new Set());return friendRequests.get(k)}
+function pubUser(k){const a=accounts.get(k);return a?{handle:a.handle,displayName:a.displayName,avatar:a.avatar||'',status:a.online?'online':'offline',game:a.game||''}:null}
+function sendFriends(k){const sid=[...sessions].find(([,h])=>h===k)?.[0];if(sid)io.to(sid).emit('friends:list',[...fset(k)].map(pubUser).filter(Boolean))}
+function sendRequests(k){const sid=[...sessions].find(([,h])=>h===k)?.[0];if(sid)io.to(sid).emit('friends:requests',[...reqset(k)].map(pubUser).filter(Boolean))}
+function dmKey(a,b){return [a,b].sort().join('::')}
 io.on('connection',s=>{
- s.on('auth:register',d=>{const h=handle(d?.handle),p=String(d?.password||'');if(!h)return s.emit('auth:error','User: только английские буквы, цифры и _. Например User123.');if(p.length<6)return s.emit('auth:error','Пароль должен быть не короче 6 символов.');const k=h.toLowerCase();if(accounts.has(k))return s.emit('auth:error','Такой User уже существует. Войди в него.');const hp=makePass(p);accounts.set(k,{handle:h,displayName:display(d?.displayName,h),avatar:d?.avatar||'',game:'',salt:hp.salt,hash:hp.hash,online:true});sessions.set(s.id,k);newClub('Wecsord Hub',k);saveData();s.emit('auth:ok',pub(k));users();emitClubs(k)});
- s.on('auth:login',d=>{const h=handle(d?.handle),p=String(d?.password||'');if(!h)return s.emit('auth:error','Введи User, например User123.');const k=h.toLowerCase(),a=accounts.get(k);if(!a||!checkPass(p,a))return s.emit('auth:error','Неверный User или пароль.');a.online=true;sessions.set(s.id,k);saveData();s.emit('auth:ok',pub(k));users();emitClubs(k)});
+ s.on('auth:register',d=>{const h=handle(d?.handle),p=String(d?.password||'');if(!h)return s.emit('auth:error','User: только английские буквы, цифры и _. Например User123.');if(p.length<6)return s.emit('auth:error','Пароль должен быть не короче 6 символов.');const k=h.toLowerCase();if(accounts.has(k))return s.emit('auth:error','Такой User уже существует. Войди в него.');const hp=makePass(p);accounts.set(k,{handle:h,displayName:display(d?.displayName,h),avatar:d?.avatar||'',game:'',salt:hp.salt,hash:hp.hash,online:true});sessions.set(s.id,k);newClub('Wecsord Hub',k);saveData();s.emit('auth:ok',pub(k));users();emitClubs(k);sendFriends(k);sendRequests(k)});
+ s.on('auth:login',d=>{const h=handle(d?.handle),p=String(d?.password||'');if(!h)return s.emit('auth:error','Введи User, например User123.');const k=h.toLowerCase(),a=accounts.get(k);if(!a||!checkPass(p,a))return s.emit('auth:error','Неверный User или пароль.');a.online=true;sessions.set(s.id,k);saveData();s.emit('auth:ok',pub(k));users();emitClubs(k);sendFriends(k);sendRequests(k)});
  s.on('profile:update',d=>{const a=me(s);if(!a)return;a.displayName=display(d?.displayName,a.handle);if(typeof d?.avatar==='string')a.avatar=d.avatar.slice(0,400000);a.game=String(d?.game||'').slice(0,60);s.emit('auth:ok',pub(a.handle.toLowerCase()));saveData();users()});
+ s.on('friends:add',target=>{const a=me(s);if(!a)return;const k=a.handle.toLowerCase(),t=String(target||'').trim().toLowerCase();if(!accounts.has(t)||t===k)return s.emit('friends:info','User not found.');if(fset(k).has(t))return s.emit('friends:info','Already friends.');reqset(t).add(k);sendRequests(t);s.emit('friends:info','Friend request sent.')});
+ s.on('friends:accept',requester=>{const a=me(s);if(!a)return;const k=a.handle.toLowerCase(),r=String(requester||'').toLowerCase();if(!reqset(k).has(r))return;reqset(k).delete(r);fset(k).add(r);fset(r).add(k);sendRequests(k);sendFriends(k);sendFriends(r);const sid=[...sessions].find(([,h])=>h===r)?.[0];if(sid)io.to(sid).emit('friends:info',a.displayName+' accepted your request.')});
+ s.on('friends:remove',target=>{const a=me(s);if(!a)return;const k=a.handle.toLowerCase(),t=String(target||'').toLowerCase();fset(k).delete(t);fset(t).delete(k);sendFriends(k);sendFriends(t)});
+ s.on('dm:load',target=>{const a=me(s),t=String(target||'').toLowerCase();if(!a||!accounts.has(t)||(!fset(a.handle.toLowerCase()).has(t)&&t!==a.handle.toLowerCase()))return;const key=dmKey(a.handle.toLowerCase(),t);s.emit('dm:load',{with:t,messages:dms.get(key)||[]})});
+ s.on('dm:send',d=>{const a=me(s),t=String(d?.to||'').toLowerCase(),text=String(d?.text||'').trim();if(!a||!accounts.has(t)||!text||(!fset(a.handle.toLowerCase()).has(t)&&t!==a.handle.toLowerCase()))return;const key=dmKey(a.handle.toLowerCase(),t),m={from:a.handle,displayName:a.displayName,avatar:a.avatar||'',text:text.slice(0,2000),time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})};if(!dms.has(key))dms.set(key,[]);dms.get(key).push(m);const sid=[...sessions].find(([,h])=>h===t)?.[0];if(sid)io.to(sid).emit('dm:message',{with:a.handle.toLowerCase(),message:m});s.emit('dm:message',{with:t,message:m});saveData()});
  s.on('club:create',d=>{const a=me(s);if(!a)return;const c=newClub(d?.name,a.handle.toLowerCase());saveData();s.emit('club:created',{invite:c.code});emitClubs(a.handle.toLowerCase());joinClubSocket(s,c)});
  s.on('club:joinByCode',v=>{const a=me(s),c=[...clubs.values()].find(x=>x.code===String(v||'').trim().toUpperCase());if(!a)return;if(!c)return s.emit('club:error','Код клуба не найден.');c.members.add(a.handle.toLowerCase());saveData();emitClubs(a.handle.toLowerCase());joinClubSocket(s,c)});
  s.on('club:select',id=>{const a=me(s),c=clubs.get(id);if(!a||!c||!c.members.has(a.handle.toLowerCase()))return;joinClubSocket(s,c)});
@@ -33,4 +52,4 @@ io.on('connection',s=>{
  s.on('call:offer',x=>io.to(x.to).emit('call:offer',{from:s.id,offer:x.offer}));s.on('call:answer',x=>io.to(x.to).emit('call:answer',{from:s.id,answer:x.answer}));s.on('call:ice',x=>io.to(x.to).emit('call:ice',{from:s.id,candidate:x.candidate}));s.on('call:leave',room=>{s.leave(room);s.to(room).emit('call:left',s.id);io.to(room).emit('call:participants',roomUsers(room))});
  s.on('disconnect',()=>{const k=sessions.get(s.id);if(k){sessions.delete(s.id);const a=accounts.get(k);if(a)a.online=false;users()}});
 });
-server.listen(PORT,()=>console.log('Wecsord 5.0 on '+PORT));
+server.listen(PORT,()=>console.log('Wecsord 6.0 on '+PORT));

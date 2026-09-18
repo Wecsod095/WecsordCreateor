@@ -1,19 +1,9 @@
-# Wecsord 5.0
+# Wecsord 6.0
 
-Dark community chat with its own identity, clubs, channels and WebRTC voice/video calls.
+A distinct dark social chat app with Spaces, friends, group rooms, voice/video calls, screen sharing, profiles and optional Tenor GIF search.
 
-## Added in 5.0
-- Permanent User handle (`User123`) + password login.
-- Editable display name and profile avatar/game status.
-- Black/dark original interface with purple Wecsord accent.
-- Club creation with short invite code.
-- Separate text and voice channels inside each club.
-- Chat stays visible while a voice/video call is open (call is a dock, not a fullscreen takeover).
-- Call join/leave sounds and microphone/camera/screen-share controls.
-- Online member list.
-- Server-side password hashing with Node `crypto.scrypt`.
-- Local `space/data.json` persistence for accounts/clubs.
+## Start
+`npm install` then `npm start`.
 
-## Run
-`npm install`
-`npm start`
+## Optional GIFs
+Set `TENOR_API_KEY` in the hosting environment. The key stays on the server.
