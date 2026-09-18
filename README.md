@@ -1,36 +1,18 @@
-# Wecsord 5.0
+# Wecsord 6.0
 
-Discord-like web chat with:
-- Wecsord branding
-- English-only nicknames (A-Z, 0-9, _)
-- online users and profiles/avatars
-- friend requests and friends list
-- private group chats with friends
-- text and voice channels
-- WebRTC voice/video calls
-- visible participant list inside calls
-- microphone, camera and screen sharing
-- Tenor GIF search and GIF messages (requires TENOR_API_KEY)
+Добавлено:
+- постоянные аккаунты в SQLite;
+- регистрация и вход по username + паролю;
+- username только английскими буквами/цифрами/`_`, 3–20 символов;
+- username не меняется после регистрации;
+- отдельное отображаемое имя можно менять;
+- профиль и данные сохраняются после перезапуска;
+- серверные сессии;
+- сохранение аватара/описания/статуса игры.
 
-## Run locally
+Запуск:
+npm.cmd install
+npm.cmd start
+http://localhost:3000
 
-```bash
-npm install
-npm start
-```
-
-Open http://localhost:3000
-
-## Tenor GIFs
-
-Set these environment variables on the server/hosting platform:
-- `TENOR_API_KEY` - your Tenor API key
-- `TENOR_CLIENT_KEY` - optional client key, defaults to `wecsord`
-
-The API key stays on the server; the browser calls `/api/gifs`.
-
-## Important
-
-The current data store is in memory. Users, friends, groups and messages reset when the server restarts. A database/authentication layer should be added before production use.
-
-For internet WebRTC calls, HTTPS is required by browsers for camera/microphone access. A TURN server may be needed for some networks.
+На Render для постоянных данных нужна подключённая persistent disk или внешняя PostgreSQL/SQLite-compatible база. Без постоянного диска локальная SQLite-база может быть сброшена при пересоздании сервиса.
