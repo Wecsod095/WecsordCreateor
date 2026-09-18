@@ -1,18 +1,19 @@
-# Wecsord 6.0
+# Wecsord 5.0
 
-Добавлено:
-- постоянные аккаунты в SQLite;
-- регистрация и вход по username + паролю;
-- username только английскими буквами/цифрами/`_`, 3–20 символов;
-- username не меняется после регистрации;
-- отдельное отображаемое имя можно менять;
-- профиль и данные сохраняются после перезапуска;
-- серверные сессии;
-- сохранение аватара/описания/статуса игры.
+Dark community chat with its own identity, clubs, channels and WebRTC voice/video calls.
 
-Запуск:
-npm.cmd install
-npm.cmd start
-http://localhost:3000
+## Added in 5.0
+- Permanent User handle (`User123`) + password login.
+- Editable display name and profile avatar/game status.
+- Black/dark original interface with purple Wecsord accent.
+- Club creation with short invite code.
+- Separate text and voice channels inside each club.
+- Chat stays visible while a voice/video call is open (call is a dock, not a fullscreen takeover).
+- Call join/leave sounds and microphone/camera/screen-share controls.
+- Online member list.
+- Server-side password hashing with Node `crypto.scrypt`.
+- Local `space/data.json` persistence for accounts/clubs.
 
-На Render для постоянных данных нужна подключённая persistent disk или внешняя PostgreSQL/SQLite-compatible база. Без постоянного диска локальная SQLite-база может быть сброшена при пересоздании сервиса.
+## Run
+`npm install`
+`npm start`
