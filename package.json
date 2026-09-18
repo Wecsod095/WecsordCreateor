@@ -1,1 +1,0 @@
-{"name":"wecsord","version":"5.0.0","private":true,"description":"Wecsord dark community chat","main":"server/server.js","scripts":{"start":"node server/server.js"},"dependencies":{"express":"^4.21.2","socket.io":"^4.8.1"}}
