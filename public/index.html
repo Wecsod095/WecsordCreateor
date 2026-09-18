@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wecsord</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#080b10;color:#eef2f7;font-family:system-ui,Arial;overflow:hidden}
+button,input{font:inherit}button{cursor:pointer}
+.app{height:100vh;display:grid;grid-template-columns:72px 245px 1fr 230px}
+.rail{background:#06080c;border-right:1px solid #202735;padding:12px;display:flex;flex-direction:column;gap:10px}.logo{height:48px;border-radius:15px;background:#7567f4;display:grid;place-items:center;font-size:22px;font-weight:900}.rail button{height:44px;border:1px solid #242c3a;background:#111722;color:#b9c2d1;border-radius:13px}.rail button:hover{color:white;background:#191f2b}
+.side,.right{background:#0d1118;padding:14px;overflow:auto}.brand{font-size:19px;font-weight:900;padding:5px 4px 20px}.brand i{color:#9b91ff;font-style:normal}.label{font-size:10px;color:#69758a;letter-spacing:.12em;text-transform:uppercase;margin:17px 6px 8px}.item,.channel,.member{padding:9px;border-radius:9px;color:#9da8ba;margin:2px 0}.item:hover,.item.active,.channel:hover{background:#181e29;color:#fff}.channel{cursor:pointer}.channel b{color:#68758b;margin-right:7px}
+.main{display:flex;flex-direction:column;min-width:0;background:#0b0f16}.top{height:62px;border-bottom:1px solid #202735;display:flex;align-items:center;gap:10px;padding:0 17px}.top b{font-size:16px}.sub{font-size:11px;color:#68758a}.sp{flex:1}.top button,.secondary{background:#151b25;border:1px solid #293244;color:#e5eaf2;border-radius:10px;padding:8px 11px}
+.chat{flex:1;overflow:auto;padding:24px}.welcome{text-align:center;max-width:650px;margin:70px auto;color:#8d99ab}.welcome h1{color:#fff}.msg{display:flex;gap:10px;padding:8px;border-radius:8px}.msg:hover{background:#10151d}.ava{width:38px;height:38px;border-radius:12px;background:#252d3b;display:grid;place-items:center;flex:none;font-weight:800}.meta b{color:#fff}.time{font-size:10px;color:#69758a;margin-left:7px}.body{color:#c9d1dd;margin-top:3px;white-space:pre-wrap}.composer{padding:13px;border-top:1px solid #202735;display:flex;gap:8px}.composer input,.modal input{flex:1;background:#151b25;border:1px solid #2a3445;color:white;border-radius:10px;padding:11px;outline:none}.send,.primary{background:#7567f4;border:0;color:white;border-radius:10px;padding:0 16px;font-weight:800}
+.modal{position:fixed;inset:0;background:#000b;display:grid;place-items:center;z-index:20}.box{width:min(420px,92vw);background:#101620;border:1px solid #2b3546;border-radius:18px;padding:22px;box-shadow:0 30px 100px #000}.box input{width:100%;margin:7px 0}.row{display:flex;gap:8px;margin-top:10px}.row button{flex:1;height:42px}
+.call{position:fixed;z-index:30;inset:6vh 7vw;background:#080c12;border:1px solid #303a4b;border-radius:18px;display:flex;flex-direction:column;box-shadow:0 30px 120px #000}.callhead{height:55px;border-bottom:1px solid #202735;padding:0 15px;display:flex;align-items:center}.callbody{flex:1;display:grid;grid-template-columns:1fr 260px;min-height:0}.stage{display:grid;place-items:center;background:#030507}.callchat{border-left:1px solid #202735;display:flex;flex-direction:column}.callmsgs{flex:1;overflow:auto;padding:12px}.callinput{display:flex;gap:6px;padding:9px;border-top:1px solid #202735}.callinput input{min-width:0;flex:1;background:#151b25;border:1px solid #293244;color:white;border-radius:9px;padding:9px}.controls{padding:10px;border-top:1px solid #202735;display:flex;gap:8px}.controls button{background:#171e29;color:#fff;border:1px solid #293345;border-radius:10px;padding:9px 12px}.hang{background:#c94e62!important;border-color:#c94e62!important}.hidden{display:none!important}.note{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#171f2c;border:1px solid #303b4e;padding:10px 14px;border-radius:10px;z-index:50}
+@media(max-width:850px){.app{grid-template-columns:60px 190px 1fr}.right{display:none}.call{inset:2vh 2vw}.callbody{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="app"></div><div id="modal"></div><div id="note" class="note hidden"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket=io();
+let me=localStorage.getItem("wecsordName")||"", avatar="", game="";
+let channels=[], users=[], friends=[], groups=[], current=null, callRoom=null, localStream=null;
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const initial=s=>(s||"?")[0].toUpperCase();
+function note(t){const n=$("#note");n.textContent=t;n.classList.remove("hidden");setTimeout(()=>n.classList.add("hidden"),2300)}
+function validName(n){return /^[A-Za-z0-9_]{2,24}$/.test(n)}
+function showJoin(){ $("#modal").innerHTML=`<div class="modal"><div class="box"><h2 style="margin:0">Добро пожаловать в <span style="color:#9b91ff">Wecsord</span></h2><p style="color:#8793a6">Создай свой постоянный User. Сейчас имя сохраняется в этом браузере.</p><input id="name" placeholder="User123" value="${esc(me)}"><input id="game" placeholder="Игра / статус"><div class="row"><button class="primary" onclick="join()">Войти в Wecsord</button></div><div style="color:#68758a;font-size:11px;margin-top:10px">Только English: A-Z, a-z, 0-9 и _</div></div></div>`}
+function join(){const n=$("#name").value.trim();if(!validName(n))return note("User: только English, цифры и _");me=n;game=$("#game").value.trim();localStorage.setItem("wecsordName",me);$("#modal").innerHTML="";socket.emit("join",{name:me,avatar,game})}
+function shell(){ $("#app").innerHTML=`<div class="app"><nav class="rail"><div class="logo">W</div><button onclick="home()">⌂</button><button onclick="addFriend()">♟</button><button onclick="createGroup()">＋</button><div class="sp"></div><button onclick="profile()">⚙</button></nav><aside class="side"><div class="brand">W<i>ecsord</i></div><div class="label">Spaces / комнаты</div><div id="groups"></div><div class="label">Каналы</div><div id="channels"></div><div class="label">Друзья</div><div id="friends"></div></aside><main class="main"><header class="top"><div><b id="title">Главная</b><div class="sub" id="sub">Wecsord</div></div><div class="sp"></div><button onclick="startCall()">📞 Звонок</button></header><section class="chat" id="chat"></section><div class="composer"><input id="text" placeholder="Написать сообщение..." onkeydown="if(event.key==='Enter')send()"><button class="send" onclick="send()">Отправить</button></div></main><aside class="right"><div class="label">В сети</div><div id="online"></div><div class="label">Мой профиль</div><div class="member"><div class="ava">${initial(me)}</div><div><b>${esc(me)}</b><div style="color:#68758a;font-size:11px">${esc(game||"В Wecsord")}</div></div></div></aside></div>`}
+function home(){current=null;$("#title").textContent="Главная";$("#sub").textContent="Wecsord";$("#chat").innerHTML=`<div class="welcome"><h1>Добро пожаловать, ${esc(me)} 👋</h1><p>Создавай свои комнаты, добавляй друзей и общайся. В звонке чат остаётся прямо внутри окна.</p></div>`;draw()}
+function draw(){drawChannels();drawUsers();drawGroups()}
+function drawChannels(){const e=$("#channels");e.innerHTML=channels.map(c=>`<div class="channel" onclick="openChannel('${c.id}')"><b>${c.type==="voice"?"🔊":"#"}</b>${esc(c.name)}</div>`).join("")}
+function drawUsers(){const e=$("#online");e.innerHTML=users.map(u=>`<div class="member">🟢 ${esc(u.name)}${u.game?`<div style="font-size:10px;color:#68758a;margin-left:18px">${esc(u.game)}</div>`:""}</div>`).join("")}
+function drawGroups(){const e=$("#groups");e.innerHTML=groups.map(g=>`<div class="item" onclick="openGroup('${g.id}')">👥 ${esc(g.name)}</div>`).join("")||`<div style="color:#68758a;padding:7px;font-size:12px">Нет групп</div>`}
+function openChannel(id){current=channels.find(c=>c.id===id);if(!current)return;$("#title").textContent=current.name;$("#sub").textContent=current.type==="voice"?"Голосовой канал":"Текстовый канал";if(current.type==="voice"){$("#chat").innerHTML=`<div class="welcome"><h1>🔊 ${esc(current.name)}</h1><p>Нажми «Звонок». Чат будет внутри окна звонка.</p><button class="primary" style="height:42px" onclick="startCall()">Войти в звонок</button></div>`;return}socket.emit("channelMessages",current.id)}
+function renderMessages(ms){$("#chat").innerHTML=ms.map(m=>`<div class="msg"><div class="ava">${initial(m.name)}</div><div class="meta"><b>${esc(m.name)}</b><span class="time">${esc(m.time)}</span><div class="body">${m.gif?`<img src="${esc(m.gif)}" style="max-width:300px;border-radius:10px;display:block;margin-top:5px">`:esc(m.text)}</div></div></div>`).join("");$("#chat").scrollTop=999999}
+function send(){if(!current||current.type!=="text")return note("Выбери текстовый канал");const t=$("#text").value.trim();if(!t)return;socket.emit("message",{channel:current.id,text:t});$("#text").value=""}
+function addFriend(){const q=prompt("Введи User друга:");if(!q)return;const u=users.find(x=>x.name.toLowerCase()===q.toLowerCase());if(!u)return note("Пользователь не найден");socket.emit("friends:add",u.id);note("Заявка отправлена")}
+function profile(){ $("#modal").innerHTML=`<div class="modal"><div class="box"><h2 style="margin-top:0">Профиль</h2><p>Постоянный User: <b>@${esc(me)}</b></p><input id="pn" value="${esc(me)}" placeholder="User123"><input id="pg" value="${esc(game)}" placeholder="Игра / статус"><div class="row"><button class="primary" onclick="saveProfile()">Сохранить</button><button class="secondary" onclick="$('#modal').innerHTML=''">Закрыть</button></div></div></div>`}
+function saveProfile(){const n=$("#pn").value.trim();if(!validName(n))return note("Только English, цифры и _");me=n;game=$("#pg").value.trim();localStorage.setItem("wecsordName",me);socket.emit("profile:update",{name:me,game});$("#modal").innerHTML="";shell();draw();home()}
+function createGroup(){const name=prompt("Название группы:","Моя группа");if(!name)return;const ids=friends.map(f=>f.id);if(!ids.length)return note("Сначала добавь друга");socket.emit("group:create",{name,members:[ids[0]]})}
+function openGroup(id){current={group:id,type:"group"};$("#title").textContent=groups.find(g=>g.id===id)?.name||"Группа";$("#sub").textContent="Групповой чат";socket.emit("group:messages",id)}
+async function startCall(){const room=current?.id||"lobby";$("#modal").innerHTML=`<div class="call"><div class="callhead"><b>🔊 ${esc(current?.name||"Lobby")}</b><div class="sp"></div><button class="secondary" onclick="closeCall()">×</button></div><div class="callbody"><div class="stage"><video id="vid" autoplay muted playsinline style="max-width:100%;max-height:100%"></video><span id="voff" style="color:#667287">Камера выключена</span></div><div class="callchat"><div class="callmsgs" id="callmsgs"></div><div class="callinput"><input id="ct" placeholder="Сообщение..." onkeydown="if(event.key==='Enter')callSend()"><button class="send" onclick="callSend()">→</button></div></div></div><div class="controls"><button onclick="toggleMic()">🎙️ Микрофон</button><button onclick="toggleCam()">📹 Камера</button><button onclick="share()">🖥️ Экран</button><button class="hang" onclick="closeCall()">Завершить</button></div></div>`;callRoom=room;socket.emit("call:join",room);try{localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:true});$("#vid").srcObject=localStream;$("#voff").classList.add("hidden")}catch(e){try{localStream=await navigator.mediaDevices.getUserMedia({audio:true});note("Камера недоступна, микрофон включён")}catch(e2){note("Разреши микрофон")}}}
+function toggleMic(){const t=localStream?.getAudioTracks()[0];if(t){t.enabled=!t.enabled;note(t.enabled?"Микрофон включён":"Микрофон выключен")}}
+function toggleCam(){const t=localStream?.getVideoTracks()[0];if(t){t.enabled=!t.enabled;$("#voff").classList.toggle("hidden",t.enabled)}}
+async function share(){try{const s=await navigator.mediaDevices.getDisplayMedia({video:true});$("#vid").srcObject=s;s.getVideoTracks()[0].onended=()=>$("#vid").srcObject=localStream}catch(e){}}
+function callSend(){const t=$("#ct").value.trim();if(!t)return;$("#callmsgs").insertAdjacentHTML("beforeend",`<div style="margin-bottom:7px"><b>${esc(me)}</b>: ${esc(t)}</div>`);$("#ct").value=""}
+function closeCall(){socket.emit("call:leave",callRoom);localStream?.getTracks().forEach(t=>t.stop());localStream=null;$("#modal").innerHTML=""}
+
+socket.on("join:error",m=>{localStorage.removeItem("wecsordName");showJoin();note(m)});
+socket.on("profile:error",m=>note(m));
+socket.on("channels",x=>{channels=x;drawChannels()});
+socket.on("users",x=>{users=x;drawUsers()});
+socket.on("friends:list",x=>{friends=x;drawUsers()});
+socket.on("friends:info",m=>note(m));
+socket.on("friends:requests",x=>{if(x.length)note("Есть новые заявки в друзья")});
+socket.on("groups",x=>{groups=x;drawGroups()});
+socket.on("channelMessages",d=>{if(current?.id===d.channel)renderMessages(d.messages)});
+socket.on("channelMessage",d=>{if(current?.id===d.channel){const box=$("#chat");const m=d.message;box.insertAdjacentHTML("beforeend",`<div class="msg"><div class="ava">${initial(m.name)}</div><div class="meta"><b>${esc(m.name)}</b><span class="time">${esc(m.time)}</span><div class="body">${m.gif?`<img src="${esc(m.gif)}" style="max-width:300px;border-radius:10px">`:esc(m.text)}</div></div></div>`);box.scrollTop=999999}});
+socket.on("system",m=>note(m));
+socket.on("group:messages",d=>{if(current?.id===d.id)renderMessages(d.messages)});
+socket.on("group:message",d=>{if(current?.id===d.id){const box=$("#chat"),m=d.message;box.insertAdjacentHTML("beforeend",`<div class="msg"><div class="ava">${initial(m.name)}</div><div class="meta"><b>${esc(m.name)}</b><span class="time">${esc(m.time)}</span><div class="body">${esc(m.text)}</div></div></div>`)}});
+socket.on("call:participants",p=>{if($("#callmsgs"))note("В звонке сейчас: "+p.map(x=>x.name).join(", "))});
+
+shell();home();
+if(me)socket.emit("join",{name:me,avatar,game});else showJoin();
+</script>
+</body>
+</html>
